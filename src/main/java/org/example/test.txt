@@ -1,0 +1,134 @@
+int numberOfCustomer = demands.length;
+        List<Edge> allEdges = new ArrayList<>();
+
+        for (int i = 0; i < numberOfCustomer; i++) {
+            for (int j = 0; j < numberOfCustomer; j++) {
+                if (i != j) {
+                    allEdges.add(new Edge(i, j, distanceMatrix[i][j]));
+                }
+            }
+        }
+
+        // biến c_e là chi phí đi từ i đến j
+        IntVar[][] c = new IntVar[numberOfCustomer][numberOfCustomer];
+        for (int i = 0; i < numberOfCustomer; i++) {
+            for (int j = 0; j < numberOfCustomer; j++) {
+                c[i][j] = model.newIntVar(0, 10000, "c[" + i + "," + j + "]");
+                model.addEquality(c[i][j], distanceMatrix[i][j]);
+            }
+        }
+//        where for each edge
+//e ∈ E the integer variable xe indicates the number of times edge e is traversed in the
+//solution.
+        IntVar[][] x = new IntVar[numberOfCustomer][numberOfCustomer];
+        for (int i = 0; i < numberOfCustomer; i++) {
+            for (int j = 0; j < numberOfCustomer; j++) {
+                x[i][j] = model.newIntVar(0, 2, "x[" + i + "," + j + "]");
+            }
+        }
+//        Finally, for S ⊂ V ,
+//let δ(S) = {(i, j) : i ∈ S, j / ∈ S or i / ∈ S, j ∈ S}. If S = {i}, then we simply write δ(i)
+//instead of δ({i}).
+// Constraint 1: Sum of x[e] for all e in delta(i) equals 2
+        for (int i = 0; i < numberOfCustomer; i++) {
+            List<Edge> edges = new CVRP().delta(i, allEdges);
+            IntVar[] tmp = new IntVar[edges.size()];
+            for (int j = 0; j < edges.size(); j++) {
+                tmp[j] = x[edges.get(j).from][edges.get(j).to];
+            }
+            LinearExpr linearExpr = LinearExpr.sum(tmp);
+            model.addEquality(linearExpr, 2);
+        }
+
+        // tổng e thuộc delta(0) xe=2*vehicleNumber
+        List<Edge> edges = new CVRP().delta(0, allEdges);
+        IntVar[] tmp1 = new IntVar[edges.size()];
+        for (int j = 0; j < edges.size(); j++) {
+            tmp1[j] = x[edges.get(j).from][edges.get(j).to];
+        }
+        LinearExpr linearExpr = LinearExpr.sum(tmp1);
+        model.addEquality(linearExpr, 2 * vehicleNumber);
+        // với mọi e thuộc delta(s) (s thuộc V\0) xe>=2*r(s) với r(s) = tổng q_i/Q (rs=3)
+        for (int i = 1; i < numberOfCustomer; i++) {
+            List<Edge> edges1 = new CVRP().delta(i, allEdges);
+            IntVar[] tmp2 = new IntVar[edges1.size()];
+            for (int j = 0; j < edges1.size(); j++) {
+                tmp2[j] = x[edges1.get(j).from][edges1.get(j).to];
+            }
+            LinearExpr linearExpr1 = LinearExpr.sum(tmp2);
+            model.addGreaterOrEqual(linearExpr1, 2 );
+        }
+
+//        // xe thuộc {0,1} nếu e không thuộc delta(0)
+        for (int i = 0; i < numberOfCustomer; i++) {
+            for (int j = 0; j < numberOfCustomer; j++) {
+                if (i != 0 && j != 0) {
+                    model.addDifferent(x[i][j], 2);
+                }
+            }
+        }
+
+//        // xe thuộc {0,1,2} nếu e thuộc delta(0)
+
+
+// Hàm mục tiêu: min tổng c_e*x_e
+        IntVar[] tmp = new IntVar[numberOfCustomer * numberOfCustomer];
+        for (int i = 0; i < numberOfCustomer; i++) {
+            for (int j = 0; j < numberOfCustomer; j++) {
+                tmp[i * numberOfCustomer + j] = model.newIntVar(0, 10000, "tmp[" + i + "," + j + "]");
+                model.addMultiplicationEquality(tmp[i * numberOfCustomer + j], x[i][j], c[i][j]);
+            }
+        }
+        LinearExpr linearExpr2 = LinearExpr.sum(tmp);
+        model.minimize(linearExpr2);
+
+
+        CpSolver solver = new CpSolver();
+        CpSolverStatus status = solver.solve(model);
+        if (status == CpSolverStatus.OPTIMAL) {
+            System.out.println("obj = " + solver.objectiveValue());
+            // if(x[i][j][k] == 1) => i->j
+            for (int i = 0; i < vehicleNumber; i++) {
+                System.out.println("Route for vehicle " + i + ":");
+                for (int j = 0; j < numberOfCustomer; j++) {
+                    for (int k = 0; k < numberOfCustomer; k++) {
+                        if (solver.value(x[j][k]) == 1) {
+                            System.out.println(j + "->" + k);
+                        }
+                    }
+                }
+            }
+        } else {
+            System.out.println("No solution");
+        }
+    }
+
+    public List<Edge> delta(int i, List<Edge> allEdges) {
+        List<Edge> edges = new ArrayList<>();
+        for (Edge e : allEdges) {
+            if (e.from == i || e.to == i) {
+                edges.add(e);
+            }
+        }
+        return edges;
+    }
+
+    public List<Edge> deltaPlus(int i, List<Edge> allEdges) {
+        List<Edge> edges = new ArrayList<>();
+        for (Edge e : allEdges) {
+            if (e.from == i) {
+                edges.add(e);
+            }
+        }
+        return edges;
+    }
+
+    public List<Edge> deltaMinus(int i, List<Edge> allEdges) {
+        List<Edge> edges = new ArrayList<>();
+        for (Edge e : allEdges) {
+            if (e.to == i) {
+                edges.add(e);
+            }
+        }
+        return edges;
+    }
